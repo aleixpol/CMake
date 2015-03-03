@@ -67,6 +67,11 @@ if(CMAKE_GENERATOR MATCHES "Ninja")
   mark_as_advanced(CMAKE_EXPORT_COMPILE_COMMANDS)
 endif()
 
+set(CMAKE_EXPORT_PROJECT_METADATA "" CACHE STRING
+    "Enables the output of a ProjectTargets.json file during generation when a version is provided."
+)
+mark_as_advanced(CMAKE_EXPORT_PROJECT_METADATA)
+
 # GetDefaultWindowsPrefixBase
 #
 # Compute the base directory for CMAKE_INSTALL_PREFIX based on:

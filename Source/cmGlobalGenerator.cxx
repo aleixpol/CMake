@@ -2870,6 +2870,117 @@ void cmGlobalGenerator::WriteSummary()
     this->WriteSummary(ti->second);
     fout << ti->second->GetSupportDirectory() << "\n";
     }
+
+  const char* version = mf->GetDefinition("CMAKE_EXPORT_PROJECT_METADATA");
+  if(version && *version)
+    {
+      if (std::string(version) == "1.0")
+        WriteProjectTargetsJson();
+      else
+        cmSystemTools::Error(
+          "Generator implementation error, "
+          "Unknown export metadata version.");
+    }
+}
+
+void printBacktraceJson(const cmListFileBacktrace& bt, Json::Value& val)
+{
+  for(cmListFileBacktrace::const_iterator it = bt.begin(); it!=bt.end(); ++it)
+    {
+      const cmListFileContext& ctx = *it;
+      std::string path = ctx.FilePath;
+      path += ':';
+      path += std::to_string(ctx.Line);
+
+      val.append( path );
+    }
+}
+
+void cmGlobalGenerator::WriteProjectTargetsJson()
+{
+  cmMakefile* mf = this->LocalGenerators[0]->GetMakefile();
+  std::string projectTargetsPath = mf->GetHomeOutputDirectory();
+  projectTargetsPath += "/ProjectTargets.json";
+
+  Json::Value pf_root(Json::objectValue);
+
+  pf_root["version"] = cmVersion::GetCMakeVersion();
+  Json::Value& pf_dependencies = pf_root["dependencies"] = Json::arrayValue;
+
+  for(std::vector<cmLocalGenerator*>::const_iterator i =
+        this->LocalGenerators.begin(); i != this->LocalGenerators.end(); ++i)
+    {
+    std::vector<std::string> const& lf = (*i)->GetMakefile()->GetListFiles();
+    for(std::vector<std::string>::const_iterator fi = lf.begin();
+        fi != lf.end(); ++fi)
+      {
+      pf_dependencies.append(*fi);
+      }
+    }
+
+  // Generate summary information for each nested project.
+  Json::Value& pf_languages = pf_root["languages"] = Json::arrayValue;
+  for(std::map<std::string, bool>::const_iterator it=this->LanguageEnabled.cbegin(),
+        end = this->LanguageEnabled.cend(); it!=end; ++it)
+    {
+    pf_languages.append(it->first);
+    }
+
+  // Generate summary information files for each target.
+  Json::Value& pf_targets = pf_root["targets"] = Json::arrayValue;
+  for(TargetMap::const_iterator ti =
+        this->TotalTargets.begin(); ti != this->TotalTargets.end(); ++ti)
+    {
+    if ((ti->second)->GetType() == cmTarget::INTERFACE_LIBRARY)
+      {
+      continue;
+      }
+
+    cmTarget* t = ti->second;
+    Json::Value & pf_targetValue = pf_targets.append(Json::objectValue);
+    pf_targetValue["name"] = ti->first;
+    pf_targetValue["type"] = cmTarget::GetTargetTypeName(t->GetType());
+
+    std::vector<std::string> configs;
+    t->GetMakefile()->GetConfigurations(configs);
+    if (configs.size() == 0)
+      {
+      configs.push_back("");
+      }
+
+    const bool isExecutableOrLibrary = t->GetType() != cmTarget::UTILITY;
+    Json::Value& configsArray = pf_targetValue["configs"] = Json::arrayValue;
+    cmGeneratorExpression gex;
+    for(unsigned int i = 0; i<configs.size(); ++i)
+      {
+      std::vector<cmSourceFile*> sources;
+      t->GetSourceFiles(sources, configs[i]);
+      Json::Value& targetConfig = configsArray.append(Json::objectValue);
+      targetConfig["name"] = configs[i];
+
+      if(isExecutableOrLibrary)
+        {
+        cmsys::auto_ptr<cmCompiledGeneratorExpression> val(gex.Parse("$<TARGET_FILE:" + t->GetName() + '>'));
+        targetConfig["output"] = val->Evaluate(t->GetMakefile(), configs[i], false, t);
+        }
+      Json::Value& configSources = targetConfig["sources"] = Json::arrayValue;
+      for (unsigned int j = 0; j<sources.size(); ++j)
+        {
+        configSources.append(sources[j]->GetFullPath());
+        }
+      }
+
+    if(isExecutableOrLibrary)
+      {
+      Json::Value& targetBacktrace = pf_targetValue["backtrace"] = Json::arrayValue;
+      printBacktraceJson(t->GetBacktrace(), targetBacktrace);
+      }
+    pf_targetValue["output_directory"] = t->GetMakefile()->GetCurrentOutputDirectory();
+    pf_targetValue["installed"] = (t->GetHaveInstallRule() ? "true" : "false");
+    }
+
+  cmGeneratedFileStream aout(projectTargetsPath.c_str());
+  aout << pf_root;
 }
 
 //----------------------------------------------------------------------------

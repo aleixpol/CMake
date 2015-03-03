@@ -458,6 +458,7 @@ private:
 
   void WriteSummary();
   void WriteSummary(cmTarget* target);
+  void WriteProjectTargetsJson();
   void FinalizeTargetCompileInfo();
 
   virtual void ForceLinkerLanguages();
