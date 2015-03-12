@@ -2937,6 +2937,8 @@ void cmGlobalGenerator::WriteProjectTargetsJson()
       }
 
     cmTarget* t = ti->second;
+    cmGeneratorTarget *gt = GeneratorTargets[t];
+
     Json::Value & pf_targetValue = pf_targets.append(Json::objectValue);
     pf_targetValue["name"] = ti->first;
     pf_targetValue["type"] = cmTarget::GetTargetTypeName(t->GetType());
@@ -2964,9 +2966,22 @@ void cmGlobalGenerator::WriteProjectTargetsJson()
         targetConfig["output"] = val->Evaluate(t->GetMakefile(), configs[i], false, t);
         }
       Json::Value& configSources = targetConfig["sources"] = Json::arrayValue;
+      std::vector<std::string> sourcesList;
       for (unsigned int j = 0; j<sources.size(); ++j)
         {
-        configSources.append(sources[j]->GetFullPath());
+        sourcesList.push_back(sources[i]->GetFullPath());
+        std::vector<const cmSourceFile*> headers;
+        gt->GetHeaderSources(headers, configs[i]);
+        for (unsigned int k = 0; k<headers.size(); ++k)
+          {
+          sourcesList.push_back(headers[k]->GetFullPath());
+          }
+        }
+      std::sort(sourcesList.begin(), sourcesList.end());
+      std::vector<std::string>::iterator end_it = std::unique(sourcesList.begin(), sourcesList.end());
+      for (std::vector<std::string>::iterator j = sourcesList.begin(); j != end_it; ++j)
+        {
+        configSources.append(*j);
         }
       }
 
